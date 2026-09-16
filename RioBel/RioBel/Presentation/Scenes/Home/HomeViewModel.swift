@@ -19,7 +19,6 @@ final class HomeViewModel: ObservableObject {
 
     private(set) var menuLinks: [String: String] = [:]
     var onLogout: (() -> Void)?
-    var onBack: (() -> Void)?
 
     init(
         fetchDadosComprasUseCase: FetchDadosComprasUseCase,

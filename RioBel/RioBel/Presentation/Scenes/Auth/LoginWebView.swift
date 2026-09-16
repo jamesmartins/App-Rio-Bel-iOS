@@ -48,48 +48,11 @@ struct LoginWebView: View {
         ZStack {
             RioBelColors.primaryBlue.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Barra superior de navegação
-                HStack {
-                    Button(action: onDismiss) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .bold))
-                            Text("Fechar")
-                                .font(.system(size: 16, weight: .medium))
-                        }
-                        .foregroundColor(.white)
-                    }
+            // WebView em tela cheia — a barra de navegação vem do próprio Bunker
+            WKWebViewRepresentable(url: initialURL, coordinator: holder.coordinator)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(edges: .bottom)
 
-                    Spacer()
-
-                    Text("Login RioBel")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-
-                    Spacer()
-
-                    Button(action: {
-                        if let wv = holder.coordinator.activeWebView {
-                            holder.coordinator.retry(in: wv)
-                        }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    .frame(width: 70, height: 20, alignment: .trailing)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(RioBelColors.primaryBlue)
-
-                // WebView nativa UIKit com tamanho infinito para preencher todo o espaço
-                WKWebViewRepresentable(url: initialURL, coordinator: holder.coordinator)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-
-            // Indicador de Carregamento
             if isLoading {
                 Color.black.opacity(0.15).ignoresSafeArea()
                 ProgressView()
@@ -97,7 +60,6 @@ struct LoginWebView: View {
                     .scaleEffect(1.3)
             }
 
-            // Banner de Erro com Tentar Novamente
             if let error = errorMessage {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle.fill")

@@ -10,18 +10,13 @@ struct HomeView: View {
             RioBelColors.primaryBlue.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header (Navegação + Logo RioBel)
-                headerView
+                // Saudação + logo (sem barra "Navegação")
+                topSection
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 12)
-
-                // Saudação e Saldo
-                balanceSection
-                    .padding(.horizontal, 16)
                     .padding(.bottom, 16)
 
-                // Resgatado / Expirado
+                // Resgatado / Expirado (somente visualização)
                 summaryRow
                     .padding(.horizontal, 16)
                     .padding(.bottom, 14)
@@ -45,7 +40,7 @@ struct HomeView: View {
         .onAppear {
             viewModel.loadData()
         }
-        .sheet(item: Binding(
+        .fullScreenCover(item: Binding(
             get: {
                 if let item = viewModel.selectedWebItem {
                     return WebSheetItem(url: item.url, title: item.title)
@@ -64,28 +59,14 @@ struct HomeView: View {
 
     // MARK: - Subviews
 
-    private var headerView: some View {
-        HStack(alignment: .center) {
-            Button(action: { viewModel.onBack?() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
-            }
+    private var topSection: some View {
+        HStack(alignment: .top, spacing: 12) {
+            balanceSection
 
-            Spacer()
-
-            Text("Navegação")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundColor(.white)
-
-            Spacer()
-
-            // Logo RioBel circular no canto superior direito (idêntico à IMG_0104)
             Image("LogoRiobelBadge")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 48, height: 48)
+                .frame(width: 52, height: 52)
         }
     }
 
@@ -148,7 +129,6 @@ struct HomeView: View {
                 .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
             }
         } else {
-            // Estado conforme IMG_0104 quando saldo é 0
             Text("Ainda não há saldo para gerar tokens")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(RioBelColors.tokenBarForeground)

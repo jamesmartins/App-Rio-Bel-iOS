@@ -2,16 +2,13 @@ import SwiftUI
 import Combine
 
 enum AppRoute: Equatable {
-    case welcome
     case login
-    case register
-    case terms
     case home
 }
 
 @MainActor
 final class AppCoordinator: ObservableObject {
-    @Published var currentRoute: AppRoute = .welcome
+    @Published var currentRoute: AppRoute = .login
 
     // Dependências Clean Architecture
     let sessionRepository: SessionRepositoryProtocol
@@ -63,11 +60,7 @@ final class AppCoordinator: ObservableObject {
 
     private func checkInitialRoute() {
         let session = manageSessionUseCase.currentSession()
-        if session.isAuthenticated {
-            currentRoute = .home
-        } else {
-            currentRoute = .welcome
-        }
+        currentRoute = session.isAuthenticated ? .home : .login
     }
 
     private func prefetchAppConfig() {
@@ -88,18 +81,6 @@ final class AppCoordinator: ObservableObject {
         currentRoute = .login
     }
 
-    func showRegister() {
-        currentRoute = .register
-    }
-
-    func showTerms() {
-        currentRoute = .terms
-    }
-
-    func returnToWelcome() {
-        currentRoute = .welcome
-    }
-
     func onLoginSuccess(cpf: String?, idU: String, idL: String?) {
         if let cpf = cpf {
             manageSessionUseCase.save(cpf: cpf)
@@ -116,25 +97,11 @@ final class AppCoordinator: ObservableObject {
     func logout() {
         manageSessionUseCase.logout()
         withAnimation {
-            currentRoute = .welcome
+            currentRoute = .login
         }
     }
 
     // MARK: - View Factory
-
-    func makeWelcomeViewModel() -> WelcomeViewModel {
-        let vm = WelcomeViewModel()
-        vm.onLoginTapped = { [weak self] in
-            self?.showLogin()
-        }
-        vm.onRegisterTapped = { [weak self] in
-            self?.showRegister()
-        }
-        vm.onTermsTapped = { [weak self] in
-            self?.showTerms()
-        }
-        return vm
-    }
 
     func makeHomeViewModel() -> HomeViewModel {
         let vm = HomeViewModel(

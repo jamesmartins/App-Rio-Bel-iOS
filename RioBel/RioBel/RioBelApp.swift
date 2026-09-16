@@ -11,10 +11,6 @@ struct RioBelApp: App {
                     .ignoresSafeArea()
 
                 switch coordinator.currentRoute {
-                case .welcome:
-                    WelcomeView(viewModel: coordinator.makeWelcomeViewModel())
-                        .transition(.opacity)
-
                 case .login:
                     LoginWebView(
                         initialURL: coordinator.resolvedIntroURL,
@@ -24,34 +20,10 @@ struct RioBelApp: App {
                             coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
                         },
                         onDismiss: {
-                            coordinator.returnToWelcome()
+                            // Intro/login é a tela raiz — não há tela nativa para voltar.
                         }
                     )
-                    .transition(.move(edge: .bottom))
-
-                case .register:
-                    if let regURL = URL(string: AppConstants.HardcodedLinks.cadastreseURL) {
-                        WebDetailSheetView(
-                            url: regURL,
-                            title: "Cadastre-se",
-                            onDismiss: {
-                                coordinator.returnToWelcome()
-                            }
-                        )
-                        .transition(.move(edge: .bottom))
-                    }
-
-                case .terms:
-                    if let termsURL = URL(string: AppConstants.HardcodedLinks.termosURL) {
-                        WebDetailSheetView(
-                            url: termsURL,
-                            title: "Termos e Condições",
-                            onDismiss: {
-                                coordinator.returnToWelcome()
-                            }
-                        )
-                        .transition(.move(edge: .bottom))
-                    }
+                    .transition(.opacity)
 
                 case .home:
                     HomeView(viewModel: coordinator.makeHomeViewModel())

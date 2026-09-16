@@ -84,6 +84,7 @@ final class WebDetailCoordinator: NSObject, WKNavigationDelegate, WKScriptMessag
     """
 }
 
+/// WebView em tela cheia sem chrome nativo — a navegação vem do próprio Bunker.
 struct WebDetailSheetView: View {
     let url: URL
     let title: String
@@ -96,36 +97,9 @@ struct WebDetailSheetView: View {
         ZStack {
             RioBelColors.primaryBlue.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Barra de navegação
-                HStack {
-                    Button(action: onDismiss) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 18, weight: .bold))
-                            Text("Voltar")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                    }
-
-                    Spacer()
-
-                    Text(title)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(.white)
-
-                    Spacer()
-
-                    Color.clear
-                        .frame(width: 70, height: 20)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(RioBelColors.primaryBlue)
-
-                WebDetailRepresentable(url: url, coordinator: coordinator)
-            }
+            WebDetailRepresentable(url: url, coordinator: coordinator)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(edges: .bottom)
 
             if isLoading {
                 Color.black.opacity(0.15).ignoresSafeArea()
@@ -147,11 +121,15 @@ struct WebDetailRepresentable: UIViewRepresentable {
     let url: URL
     let coordinator: WebDetailCoordinator
 
+    func makeCoordinator() -> WebDetailCoordinator {
+        coordinator
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         let contentController = configuration.userContentController
-        contentController.add(coordinator, name: "menuBack")
+        contentController.add(context.coordinator, name: "menuBack")
         contentController.addUserScript(WKUserScript(
             source: WebDetailCoordinator.backButtonJavaScript,
             injectionTime: .atDocumentEnd,
@@ -159,10 +137,17 @@ struct WebDetailRepresentable: UIViewRepresentable {
         ))
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = coordinator
+        webView.navigationDelegate = context.coordinator
+        webView.backgroundColor = UIColor(RioBelColors.primaryBlue)
+        webView.isOpaque = false
         webView.load(URLRequest(url: url))
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: WebDetailCoordinator) {
+        uiView.stopLoading()
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "menuBack")
+    }
 }
