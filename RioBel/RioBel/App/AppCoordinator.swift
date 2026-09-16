@@ -25,10 +25,10 @@ final class AppCoordinator: ObservableObject {
     let consultCliUseCase: ConsultCliUseCase
 
     init(
-        sessionRepository: SessionRepositoryProtocol = SessionRepository(),
-        dadosComprasRepository: DadosComprasRepositoryProtocol = DadosComprasRepository(),
-        appConfigRepository: AppConfigRepositoryProtocol = AppConfigRepository(),
-        consultaCliRepository: ConsultaCliRepositoryProtocol = ConsultaCliRepository()
+        sessionRepository: SessionRepositoryProtocol,
+        dadosComprasRepository: DadosComprasRepositoryProtocol,
+        appConfigRepository: AppConfigRepositoryProtocol,
+        consultaCliRepository: ConsultaCliRepositoryProtocol
     ) {
         self.sessionRepository = sessionRepository
         self.dadosComprasRepository = dadosComprasRepository
@@ -41,6 +41,15 @@ final class AppCoordinator: ObservableObject {
         self.consultCliUseCase = ConsultCliUseCase(repository: consultaCliRepository)
 
         checkInitialRoute()
+    }
+
+    convenience init() {
+        self.init(
+            sessionRepository: SessionRepository(),
+            dadosComprasRepository: DadosComprasRepository(),
+            appConfigRepository: AppConfigRepository(),
+            consultaCliRepository: ConsultaCliRepository()
+        )
     }
 
     private func checkInitialRoute() {

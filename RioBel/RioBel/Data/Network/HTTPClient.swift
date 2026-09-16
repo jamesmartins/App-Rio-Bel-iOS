@@ -35,12 +35,12 @@ struct Endpoint {
     }
 }
 
-protocol HTTPClientProtocol {
+protocol HTTPClientProtocol: Sendable {
     func request<T: Decodable>(_ endpoint: Endpoint) async throws -> T
     func requestRaw(_ endpoint: Endpoint) async throws -> (Data, HTTPURLResponse)
 }
 
-final class HTTPClient: HTTPClientProtocol {
+final class HTTPClient: HTTPClientProtocol, @unchecked Sendable {
     static let shared = HTTPClient()
 
     private let session: URLSession
