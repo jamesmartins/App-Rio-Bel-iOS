@@ -10,19 +10,21 @@ enum BunkerURLBuilder {
 
     /// Reconstrói a URL para carregar os cards do menu web
     /// Padrão: <path>?key=<appKey>&idU=<idU>&[extras]&t=<token>
+    @MainActor
     static func build(
         from urlString: String,
-        appKey: String = AppConstants.bunkerAppKey,
+        appKey: String? = nil,
         idU: String?,
         extra: [(String, String)] = []
     ) -> URL? {
+        let effectiveAppKey = appKey ?? AppRuntimeConfig.shared.dynamicAppKey ?? AppConstants.bunkerAppKey
         let base = urlString.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first
             .map(String.init) ?? urlString
 
         let token = queryValue(named: "t", in: urlString)
 
         var pairs: [(String, String)] = [
-            ("key", appKey)
+            ("key", effectiveAppKey)
         ]
 
         if let idU = idU?.trimmingCharacters(in: .whitespacesAndNewlines), !idU.isEmpty {

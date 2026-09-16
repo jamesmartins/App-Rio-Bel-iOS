@@ -83,6 +83,11 @@ final class AppConfigRepository: AppConfigRepositoryProtocol {
             let response: AppConfigResponseDTO = try await client.request(endpoint)
             let links = response.novoMenu?.links ?? [:]
             let keys = links.keys.sorted().joined(separator: ", ")
+
+            await MainActor.run {
+                AppRuntimeConfig.shared.update(from: links)
+            }
+
             AppLogger.logSuccess(
                 .repository,
                 operation: "AppConfigRepository.fetchAppConfig",

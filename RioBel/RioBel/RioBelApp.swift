@@ -16,19 +16,18 @@ struct RioBelApp: App {
                         .transition(.opacity)
 
                 case .login:
-                    if let introURL = URL(string: AppConstants.introURLString) {
-                        LoginWebView(
-                            initialURL: introURL,
-                            sessionUseCase: coordinator.manageSessionUseCase,
-                            onLoginSuccess: { cpf, idU, idL in
-                                coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
-                            },
-                            onDismiss: {
-                                coordinator.returnToWelcome()
-                            }
-                        )
-                        .transition(.move(edge: .bottom))
-                    }
+                    LoginWebView(
+                        initialURL: coordinator.resolvedIntroURL,
+                        candidateURLs: coordinator.loginCandidateURLs,
+                        sessionUseCase: coordinator.manageSessionUseCase,
+                        onLoginSuccess: { cpf, idU, idL in
+                            coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
+                        },
+                        onDismiss: {
+                            coordinator.returnToWelcome()
+                        }
+                    )
+                    .transition(.move(edge: .bottom))
 
                 case .register:
                     if let regURL = URL(string: AppConstants.HardcodedLinks.cadastreseURL) {

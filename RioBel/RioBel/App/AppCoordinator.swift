@@ -24,6 +24,14 @@ final class AppCoordinator: ObservableObject {
     let fetchAppConfigUseCase: FetchAppConfigUseCase
     let consultCliUseCase: ConsultCliUseCase
 
+    var resolvedIntroURL: URL {
+        AppRuntimeConfig.shared.dynamicIntroURL ?? AppConstants.loginCandidateURLs().first ?? URL(string: AppConstants.introURLString)!
+    }
+
+    var loginCandidateURLs: [URL] {
+        AppConstants.loginCandidateURLs()
+    }
+
     init(
         sessionRepository: SessionRepositoryProtocol,
         dadosComprasRepository: DadosComprasRepositoryProtocol,
@@ -41,6 +49,7 @@ final class AppCoordinator: ObservableObject {
         self.consultCliUseCase = ConsultCliUseCase(repository: consultaCliRepository)
 
         checkInitialRoute()
+        prefetchAppConfig()
     }
 
     convenience init() {
@@ -58,6 +67,18 @@ final class AppCoordinator: ObservableObject {
             currentRoute = .home
         } else {
             currentRoute = .welcome
+        }
+    }
+
+    private func prefetchAppConfig() {
+        Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                _ = try await self.fetchAppConfigUseCase.execute()
+                AppLogger.info(.auth, "Configurações do Bunker pré-carregadas com sucesso na inicialização.")
+            } catch {
+                AppLogger.logFailure(.auth, operation: "AppCoordinator.prefetchAppConfig", error: error)
+            }
         }
     }
 
@@ -124,9 +145,6 @@ final class AppCoordinator: ObservableObject {
         )
         vm.onLogout = { [weak self] in
             self?.logout()
-        }
-        vm.onBack = { [weak self] in
-            self?.returnToWelcome()
         }
         return vm
     }

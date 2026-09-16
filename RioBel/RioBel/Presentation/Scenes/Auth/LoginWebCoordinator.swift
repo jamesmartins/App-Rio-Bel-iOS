@@ -6,15 +6,27 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     var onLoginSuccess: ((_ cpf: String?, _ idU: String, _ idL: String?) -> Void)?
     var onDismiss: (() -> Void)?
     var onLoadingChange: ((Bool) -> Void)?
+    var onErrorMessage: ((String?) -> Void)?
 
-    private var capturedCPF: String?
+    weak var activeWebView: WKWebView?
+
+    private var candidateURLs: [URL] = []
+    private var currentCandidateIndex = 0
+    private var hasSucceededLoadingPage = false
     private var hasReportedSuccess = false
+    private var capturedCPF: String?
     private let sessionUseCase: ManageSessionUseCase
 
-    init(sessionUseCase: ManageSessionUseCase) {
+    init(sessionUseCase: ManageSessionUseCase, candidateURLs: [URL] = []) {
         self.sessionUseCase = sessionUseCase
         self.capturedCPF = sessionUseCase.currentSession().cpf
+        self.candidateURLs = candidateURLs
         super.init()
+    }
+
+    func setCandidateURLs(_ urls: [URL]) {
+        self.candidateURLs = urls
+        self.currentCandidateIndex = 0
     }
 
     // MARK: - Script Message Handler (CPF Capture)
@@ -25,22 +37,57 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         if digits.count >= 10 && digits.count <= 11 {
             self.capturedCPF = digits
             self.sessionUseCase.save(cpf: digits)
-            AppLogger.logSuccess(.auth, operation: "LoginWebCoordinator.cpfCapture", details: "CPF capturado com sucesso (\(digits.prefix(3)).***.***-\(digits.suffix(2)))")
+            AppLogger.logSuccess(
+                .auth,
+                operation: "LoginWebCoordinator.cpfCapture",
+                details: "CPF capturado com sucesso (\(digits.prefix(3)).***.***-\(digits.suffix(2)))"
+            )
         }
     }
 
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        let current = webView.url?.absoluteString ?? candidateURLs.first?.absoluteString ?? "URL pendente"
+        AppLogger.info(.auth, "🌐 [LoginWebView] Iniciando navegação provisória para: \(current)")
         onLoadingChange?(true)
+        onErrorMessage?(nil)
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        AppLogger.info(.auth, "📥 [LoginWebView] Recebendo conteúdo da página (didCommit)")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        onLoadingChange?(false)
+        guard let url = webView.url?.absoluteString else {
+            onLoadingChange?(false)
+            return
+        }
 
-        guard let url = webView.url?.absoluteString else { return }
+        AppLogger.logSuccess(.auth, operation: "LoginWebView.didFinish", details: "Página carregada: \(url)")
 
-        // Fluxo Face ID / Biometria com idL
+        // 1. Verificar se a resposta do servidor veio vazia (ex: chave rejeitada pelo Bunker retornando 3 bytes)
+        webView.evaluateJavaScript("document.body ? (document.body.innerText || document.body.innerHTML || '').trim() : ''") { [weak self] result, _ in
+            guard let self = self else { return }
+            let bodyText = (result as? String) ?? ""
+
+            if bodyText.isEmpty && !url.contains("novoMenu") {
+                AppLogger.warning(.auth, "⚠️ [LoginWebView] Página carregou vazia (sem conteúdo no body) para a URL: \(url)")
+                if self.canTryNextCandidate() {
+                    self.tryNextCandidate(in: webView)
+                    return
+                } else {
+                    self.onLoadingChange?(false)
+                    self.onErrorMessage?("A página retornou sem conteúdo. Tente recarregar ou verifique as configurações da conta.")
+                    return
+                }
+            }
+
+            self.hasSucceededLoadingPage = true
+            self.onLoadingChange?(false)
+        }
+
+        // 2. Fluxo Face ID / Biometria com idL
         if url.contains("app.do") && url.contains("idL=") {
             evaluateBiometrics(for: webView)
         } else if url.contains("app.do") && !url.contains("idL=") {
@@ -48,6 +95,7 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
                 webView.stopLoading()
                 let separator = url.contains("?") ? "&" : "?"
                 if let newURL = URL(string: "\(url)\(separator)\(idL)") {
+                    AppLogger.info(.auth, "🔑 Injetando idL de sessão anterior para login biométrico: \(newURL.absoluteString)")
                     webView.load(URLRequest(url: newURL))
                 }
             }
@@ -59,19 +107,86 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             }
         }
 
-        // Detecção de pós-login (novoMenu)
+        // 3. Detecção de pós-login (novoMenu)
         if url.contains("novoMenu") {
             handlePostLoginNavigation(url: url)
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        onLoadingChange?(false)
+        AppLogger.logFailure(.auth, operation: "LoginWebView.didFail", error: error)
+        handleNavigationFailure(in: webView, error: error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        onLoadingChange?(false)
+        AppLogger.logFailure(.auth, operation: "LoginWebView.didFailProvisionalNavigation", error: error)
+        handleNavigationFailure(in: webView, error: error)
     }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+
+        let urlString = url.absoluteString
+        AppLogger.info(.auth, "🔗 [LoginWebView] Navegação solicitada: \(urlString)")
+
+        // Detecção antecipada de sucesso de login
+        if urlString.contains("novoMenu") || urlString.contains("idU=") {
+            AppLogger.info(.auth, "Login detectado na política de navegação: \(urlString)")
+            handlePostLoginNavigation(url: urlString)
+        }
+
+        decisionHandler(.allow)
+    }
+
+    // MARK: - Tratamento de Falhas e Candidatas
+
+    private func handleNavigationFailure(in webView: WKWebView, error: Error) {
+        let nsError = error as NSError
+        // Ignora erros de cancelamento normais (ex: quando chamamos webView.load novamente)
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            return
+        }
+
+        if canTryNextCandidate() {
+            AppLogger.warning(.auth, "⚠️ Falha ao carregar candidata: \(nsError.localizedDescription). Tentando próxima opção...")
+            tryNextCandidate(in: webView)
+        } else {
+            onLoadingChange?(false)
+            onErrorMessage?("Erro ao conectar (\(nsError.localizedDescription)). Verifique sua conexão à internet.")
+        }
+    }
+
+    private func canTryNextCandidate() -> Bool {
+        (currentCandidateIndex + 1) < candidateURLs.count
+    }
+
+    func tryNextCandidate(in webView: WKWebView) {
+        guard canTryNextCandidate() else { return }
+        currentCandidateIndex += 1
+        let nextURL = candidateURLs[currentCandidateIndex]
+        AppLogger.info(.auth, "🔄 [LoginWebView] Alternando para URL candidata [\(currentCandidateIndex + 1)/\(candidateURLs.count)]: \(nextURL.absoluteString)")
+        let request = URLRequest(url: nextURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        webView.load(request)
+    }
+
+    func retry(in webView: WKWebView) {
+        onErrorMessage?(nil)
+        onLoadingChange?(true)
+        let urlToLoad = candidateURLs.indices.contains(currentCandidateIndex) ? candidateURLs[currentCandidateIndex] : candidateURLs.first
+        if let url = urlToLoad {
+            AppLogger.info(.auth, "🔄 [LoginWebView] Recarregando URL: \(url.absoluteString)")
+            webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15))
+        }
+    }
+
+    // MARK: - Pós-login
 
     private func handlePostLoginNavigation(url: String) {
         guard !hasReportedSuccess else { return }
@@ -88,7 +203,6 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         hasReportedSuccess = true
         sessionUseCase.save(idU: idU)
 
-        // Se CPF ainda não foi capturado do script, tenta ler da sessão salva
         let finalCPF = self.capturedCPF ?? sessionUseCase.currentSession().cpf
         let currentIDL = sessionUseCase.currentSession().idL
 
@@ -169,6 +283,8 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     """
 }
 
+// MARK: - WKWebViewRepresentable UIKit Wrapper
+
 struct WKWebViewRepresentable: UIViewRepresentable {
     let url: URL
     let coordinator: LoginWebCoordinator
@@ -179,6 +295,9 @@ struct WKWebViewRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        configuration.allowsInlineMediaPlayback = true
+
         let contentController = configuration.userContentController
         contentController.add(context.coordinator, name: "cpfCapture")
         contentController.addUserScript(WKUserScript(
@@ -193,11 +312,21 @@ struct WKWebViewRepresentable: UIViewRepresentable {
         webView.allowsBackForwardNavigationGestures = true
         webView.backgroundColor = UIColor(RioBelColors.primaryBlue)
         webView.isOpaque = false
+        webView.scrollView.bounces = true
 
-        let request = URLRequest(url: url)
+        context.coordinator.activeWebView = webView
+
+        AppLogger.info(.auth, "Iniciando carga de URL no LoginWebView: \(url.absoluteString)")
+        let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
         webView.load(request)
         return webView
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: LoginWebCoordinator) {
+        uiView.stopLoading()
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "cpfCapture")
+        coordinator.activeWebView = nil
+    }
 }
