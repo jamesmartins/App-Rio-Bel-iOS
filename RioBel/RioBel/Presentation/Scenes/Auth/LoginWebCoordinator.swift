@@ -25,6 +25,7 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         if digits.count >= 10 && digits.count <= 11 {
             self.capturedCPF = digits
             self.sessionUseCase.save(cpf: digits)
+            AppLogger.logSuccess(.auth, operation: "LoginWebCoordinator.cpfCapture", details: "CPF capturado com sucesso (\(digits.prefix(3)).***.***-\(digits.suffix(2)))")
         }
     }
 
@@ -91,6 +92,12 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         let finalCPF = self.capturedCPF ?? sessionUseCase.currentSession().cpf
         let currentIDL = sessionUseCase.currentSession().idL
 
+        AppLogger.logSuccess(
+            .auth,
+            operation: "LoginWebCoordinator.handlePostLoginNavigation",
+            details: "Login detectado com sucesso! idU: '\(idU.prefix(6))...', CPF presente: \(finalCPF != nil)"
+        )
+
         DispatchQueue.main.async {
             self.onLoginSuccess?(finalCPF, idU, currentIDL)
         }
@@ -101,11 +108,19 @@ final class LoginWebCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         var error: NSError?
 
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Autentique para entrar no RioBel") { success, _ in
+            AppLogger.info(.auth, "Disparando autenticação biométrica (Face ID / Touch ID)...")
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Autentique para entrar no RioBel") { success, biometryError in
                 if success {
+                    AppLogger.logSuccess(.auth, operation: "Biometria", details: "Autenticação biométrica autorizada.")
                     DispatchQueue.main.async {
-                        webView.evaluateJavaScript("login()") { _, _ in }
+                        webView.evaluateJavaScript("login()") { _, jsError in
+                            if let jsError = jsError {
+                                AppLogger.logFailure(.auth, operation: "Biometria.loginJS", error: jsError)
+                            }
+                        }
                     }
+                } else if let bErr = biometryError {
+                    AppLogger.logFailure(.auth, operation: "Biometria", error: bErr)
                 }
             }
         }

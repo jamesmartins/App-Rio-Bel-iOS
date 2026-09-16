@@ -104,6 +104,7 @@ final class HomeViewModel: ObservableObject {
             } catch {
                 self.isLoading = false
                 self.errorMessage = error.localizedDescription
+                AppLogger.logFailure(.app, operation: "HomeViewModel.loadData", error: error)
             }
         }
     }
@@ -112,7 +113,7 @@ final class HomeViewModel: ObservableObject {
         do {
             self.menuLinks = try await fetchAppConfigUseCase.execute()
         } catch {
-            print("Erro ao carregar links do APP.do: \(error)")
+            AppLogger.logFailure(.app, operation: "HomeViewModel.loadMenuLinks", error: error)
         }
     }
 
@@ -130,6 +131,8 @@ final class HomeViewModel: ObservableObject {
     }
 
     func handleMenuItemSelection(_ item: HomeMenuItem) {
+        AppLogger.info(.app, "Navegação: item selecionado: '\(item.rawValue)'")
+
         if item == .logout {
             sessionUseCase.logout()
             onLogout?()

@@ -8,6 +8,9 @@ final class DadosComprasRepository: DadosComprasRepositoryProtocol {
     }
 
     func fetchDadosCompras(cpf: String, pagina: Int) async throws -> DadosComprasDashboard {
+        let maskedCPF = maskCPF(cpf)
+        AppLogger.info(.repository, "Buscando dados de compras para CPF: \(maskedCPF) (página: \(pagina))...")
+
         let endpoint = Endpoint(
             urlString: AppConstants.dadosComprasURLString,
             method: .POST,
@@ -20,17 +23,40 @@ final class DadosComprasRepository: DadosComprasRepositoryProtocol {
             ]
         )
 
-        let response: DadosComprasResponseDTO = try await client.request(endpoint)
+        do {
+            let response: DadosComprasResponseDTO = try await client.request(endpoint)
 
-        guard response.coderro == 200 else {
-            throw NetworkError.serverError(response.msgerro)
+            guard response.coderro == 200 else {
+                let error = NetworkError.serverError(response.msgerro)
+                AppLogger.logFailure(
+                    .repository,
+                    operation: "DadosComprasRepository.fetchDadosCompras",
+                    error: error,
+                    details: "coderro: \(response.coderro), msgerro: \(response.msgerro)"
+                )
+                throw error
+            }
+
+            let cliente = response.cliente?.toDomain()
+            let saldo = response.saldo?.toDomain()
+            let compras = response.compras?.map { $0.toDomain() } ?? []
+
+            let resumo = "Cliente: '\(cliente?.nome ?? "N/A")', Saldo Disponível: R$ \(saldo?.disponivel ?? 0), Movimentos: \(compras.count)"
+            AppLogger.logSuccess(.repository, operation: "DadosComprasRepository.fetchDadosCompras", details: resumo)
+
+            return DadosComprasDashboard(cliente: cliente, saldo: saldo, compras: compras)
+        } catch {
+            AppLogger.logFailure(.repository, operation: "DadosComprasRepository.fetchDadosCompras", error: error)
+            throw error
         }
+    }
 
-        let cliente = response.cliente?.toDomain()
-        let saldo = response.saldo?.toDomain()
-        let compras = response.compras?.map { $0.toDomain() } ?? []
-
-        return DadosComprasDashboard(cliente: cliente, saldo: saldo, compras: compras)
+    private func maskCPF(_ cpf: String) -> String {
+        let digits = cpf.filter(\.isNumber)
+        guard digits.count >= 6 else { return "***" }
+        let prefix = digits.prefix(3)
+        let suffix = digits.suffix(2)
+        return "\(prefix).***.***-\(suffix)"
     }
 }
 
@@ -42,6 +68,8 @@ final class AppConfigRepository: AppConfigRepositoryProtocol {
     }
 
     func fetchAppConfig() async throws -> [String: String] {
+        AppLogger.info(.repository, "Carregando configurações e links de menu do APP.do...")
+
         let endpoint = Endpoint(
             urlString: AppConstants.appConfigURLString,
             method: .GET,
@@ -51,8 +79,20 @@ final class AppConfigRepository: AppConfigRepositoryProtocol {
             parameters: nil
         )
 
-        let response: AppConfigResponseDTO = try await client.request(endpoint)
-        return response.novoMenu?.links ?? [:]
+        do {
+            let response: AppConfigResponseDTO = try await client.request(endpoint)
+            let links = response.novoMenu?.links ?? [:]
+            let keys = links.keys.sorted().joined(separator: ", ")
+            AppLogger.logSuccess(
+                .repository,
+                operation: "AppConfigRepository.fetchAppConfig",
+                details: "Foram carregados \(links.count) links do menu: [\(keys)]"
+            )
+            return links
+        } catch {
+            AppLogger.logFailure(.repository, operation: "AppConfigRepository.fetchAppConfig", error: error)
+            throw error
+        }
     }
 }
 
@@ -64,6 +104,8 @@ final class ConsultaCliRepository: ConsultaCliRepositoryProtocol {
     }
 
     func consultCli(userIDBase64: String) async throws -> String? {
+        AppLogger.info(.repository, "Consultando perfil do cliente no ConsultaCli.do...")
+
         let endpoint = Endpoint(
             urlString: AppConstants.consultaCliURLString,
             method: .POST,
@@ -76,16 +118,26 @@ final class ConsultaCliRepository: ConsultaCliRepositoryProtocol {
             ]
         )
 
-        let (data, _) = try await client.requestRaw(endpoint)
+        do {
+            let (data, _) = try await client.requestRaw(endpoint)
 
-        // Parse tolerante como no app de referência
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let name = json["RD_userName"] as? String,
-           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return name
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let name = json["RD_userName"] as? String,
+               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                AppLogger.logSuccess(
+                    .repository,
+                    operation: "ConsultaCliRepository.consultCli",
+                    details: "Nome recuperado: '\(name)'"
+                )
+                return name
+            }
+
+            AppLogger.warning(.repository, "ConsultaCliRepository.consultCli retornou sem campo 'RD_userName' preenchido.")
+            return nil
+        } catch {
+            AppLogger.logFailure(.repository, operation: "ConsultaCliRepository.consultCli", error: error)
+            throw error
         }
-
-        return nil
     }
 }
 
@@ -107,18 +159,22 @@ final class SessionRepository: SessionRepositoryProtocol {
 
     func save(cpf: String) {
         defaults.set(cpf, forKey: "cpf")
+        AppLogger.info(.auth, "Sessão salva: CPF persistido")
     }
 
     func save(idU: String) {
         defaults.set(idU, forKey: "idU")
+        AppLogger.info(.auth, "Sessão salva: idU persistido")
     }
 
     func save(idL: String) {
         defaults.set(idL, forKey: "idL")
+        AppLogger.info(.auth, "Sessão salva: idL persistido")
     }
 
     func save(userName: String) {
         defaults.set(userName, forKey: "userName")
+        AppLogger.info(.auth, "Sessão salva: userName persistido ('\(userName)')")
     }
 
     func clearSession() {
@@ -128,5 +184,6 @@ final class SessionRepository: SessionRepositoryProtocol {
         defaults.removeObject(forKey: "userName")
         defaults.removeObject(forKey: "login")
         defaults.removeObject(forKey: "senha")
+        AppLogger.info(.auth, "Sessão limpa (Logout concluído)")
     }
 }
