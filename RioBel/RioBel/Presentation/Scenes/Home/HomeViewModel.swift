@@ -97,6 +97,12 @@ final class HomeViewModel: ObservableObject {
                     self.availableBalance = saldo.disponivel
                     self.redeemedBalance = saldo.resgatado
                     self.expiredBalance = saldo.expirado
+                    AppLogger.info(
+                        .app,
+                        "Home saldo aplicado → disponível: \(saldo.disponivel), resgatado: \(saldo.resgatado), expirado: \(saldo.expirado)"
+                    )
+                } else {
+                    AppLogger.warning(.app, "dadoscompras retornou sem objeto saldo")
                 }
             } catch {
                 self.isLoading = false

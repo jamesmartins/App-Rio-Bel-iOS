@@ -11,6 +11,8 @@ final class AppCoordinator: ObservableObject {
     @Published var currentRoute: AppRoute = .login
     /// Evita abrir a WebView de login antes de limpar cache e carregar APP.do.
     @Published var isLoginReady = false
+    /// Mantém a Home estável — não recriar o ViewModel a cada re-render do body.
+    @Published private(set) var homeViewModel: HomeViewModel?
 
     // Dependências Clean Architecture
     let sessionRepository: SessionRepositoryProtocol
@@ -64,7 +66,12 @@ final class AppCoordinator: ObservableObject {
 
     private func checkInitialRoute() {
         let session = manageSessionUseCase.currentSession()
-        currentRoute = session.isAuthenticated ? .home : .login
+        if session.isAuthenticated {
+            homeViewModel = makeHomeViewModel()
+            currentRoute = .home
+        } else {
+            currentRoute = .login
+        }
     }
 
     /// Limpa sessão/cache quando não autenticado e pré-carrega APP.do.
@@ -72,6 +79,7 @@ final class AppCoordinator: ObservableObject {
         if !manageSessionUseCase.currentSession().isAuthenticated {
             AppLogger.info(.auth, "🧹 Bootstrap: forçando limpeza de sessão/cache para recuperar a intro")
             await manageSessionUseCase.logoutCompletely()
+            homeViewModel = nil
             currentRoute = .login
         }
 
@@ -88,6 +96,7 @@ final class AppCoordinator: ObservableObject {
     /// Usado após logout ou "Tentar Novamente" na intro.
     func prepareFreshLogin() async {
         isLoginReady = false
+        homeViewModel = nil
         await manageSessionUseCase.logoutCompletely()
         _ = try? await fetchAppConfigUseCase.execute()
         currentRoute = .login
@@ -108,6 +117,7 @@ final class AppCoordinator: ObservableObject {
         if let idL = idL {
             manageSessionUseCase.save(idL: idL)
         }
+        homeViewModel = makeHomeViewModel()
         withAnimation {
             currentRoute = .home
         }

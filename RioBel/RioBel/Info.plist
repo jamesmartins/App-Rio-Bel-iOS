@@ -7,7 +7,5 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSFaceIDUsageDescription</key>
-	<string>Utilize o Face ID para acessar rapidamente sua conta RioBel</string>
 </dict>
 </plist>

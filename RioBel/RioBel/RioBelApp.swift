@@ -34,8 +34,13 @@ struct RioBelApp: App {
                     }
 
                 case .home:
-                    HomeView(viewModel: coordinator.makeHomeViewModel())
-                        .transition(.opacity)
+                    if let homeViewModel = coordinator.homeViewModel {
+                        HomeView(viewModel: homeViewModel)
+                            .transition(.opacity)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    }
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: coordinator.currentRoute)

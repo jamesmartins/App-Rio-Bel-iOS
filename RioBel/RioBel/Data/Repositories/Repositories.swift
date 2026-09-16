@@ -27,13 +27,13 @@ final class DadosComprasRepository: DadosComprasRepositoryProtocol {
         do {
             let response: DadosComprasResponseDTO = try await client.request(endpoint)
 
-            guard response.coderro == 200 else {
+            guard response.coderro.value == 200 else {
                 let error = NetworkError.serverError(response.msgerro)
                 AppLogger.logFailure(
                     .repository,
                     operation: "DadosComprasRepository.fetchDadosCompras",
                     error: error,
-                    details: "coderro: \(response.coderro), msgerro: \(response.msgerro)"
+                    details: "coderro: \(response.coderro.value), msgerro: \(response.msgerro)"
                 )
                 throw error
             }
@@ -42,8 +42,18 @@ final class DadosComprasRepository: DadosComprasRepositoryProtocol {
             let saldo = response.saldo?.toDomain()
             let compras = response.compras?.map { $0.toDomain() } ?? []
 
-            let resumo = "Cliente: '\(cliente?.nome ?? "N/A")', Saldo Disponível: R$ \(saldo?.disponivel ?? 0), Movimentos: \(compras.count)"
+            let resumo = """
+            Cliente: '\(cliente?.nome ?? "N/A")', \
+            Disponível: \(saldo?.disponivel ?? 0), \
+            Resgatado: \(saldo?.resgatado ?? 0), \
+            Expirado: \(saldo?.expirado ?? 0), \
+            Movimentos: \(compras.count)
+            """
             AppLogger.logSuccess(.repository, operation: "DadosComprasRepository.fetchDadosCompras", details: resumo)
+
+            if let saldo, saldo.resgatado == 0, saldo.expirado == 0, saldo.disponivel == 0 {
+                AppLogger.warning(.repository, "⚠️ Saldo decodificado zerado — confira o JSON bruto no log de Network.")
+            }
 
             return DadosComprasDashboard(cliente: cliente, saldo: saldo, compras: compras)
         } catch {
