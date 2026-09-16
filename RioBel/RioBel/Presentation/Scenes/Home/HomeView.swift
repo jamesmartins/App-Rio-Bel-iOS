@@ -43,16 +43,29 @@ struct HomeView: View {
         .fullScreenCover(item: Binding(
             get: {
                 if let item = viewModel.selectedWebItem {
-                    return WebSheetItem(url: item.url, title: item.title)
+                    return WebSheetItem(url: item.url, title: item.title, isLogout: item.isLogout)
                 }
                 return nil
             },
-            set: { _ in viewModel.selectedWebItem = nil }
+            set: { newValue in
+                if newValue == nil, viewModel.selectedWebItem?.isLogout == true {
+                    Task { await viewModel.completeLogout() }
+                } else {
+                    viewModel.selectedWebItem = nil
+                }
+            }
         )) { sheetItem in
             WebDetailSheetView(
                 url: sheetItem.url,
                 title: sheetItem.title,
-                onDismiss: { viewModel.selectedWebItem = nil }
+                isLogoutFlow: sheetItem.isLogout,
+                onDismiss: {
+                    if sheetItem.isLogout {
+                        Task { await viewModel.completeLogout() }
+                    } else {
+                        viewModel.selectedWebItem = nil
+                    }
+                }
             )
         }
     }
@@ -180,6 +193,7 @@ private struct WebSheetItem: Identifiable {
     let id = UUID()
     let url: URL
     let title: String
+    let isLogout: Bool
 }
 
 #Preview {

@@ -12,18 +12,26 @@ struct RioBelApp: App {
 
                 switch coordinator.currentRoute {
                 case .login:
-                    LoginWebView(
-                        initialURL: coordinator.resolvedIntroURL,
-                        candidateURLs: coordinator.loginCandidateURLs,
-                        sessionUseCase: coordinator.manageSessionUseCase,
-                        onLoginSuccess: { cpf, idU, idL in
-                            coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
-                        },
-                        onDismiss: {
-                            // Intro/login é a tela raiz — não há tela nativa para voltar.
-                        }
-                    )
-                    .transition(.opacity)
+                    if coordinator.isLoginReady {
+                        LoginWebView(
+                            initialURL: coordinator.resolvedIntroURL,
+                            candidateURLs: coordinator.loginCandidateURLs,
+                            sessionUseCase: coordinator.manageSessionUseCase,
+                            onLoginSuccess: { cpf, idU, idL in
+                                coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
+                            },
+                            onDismiss: {},
+                            onRetryFreshStart: {
+                                Task { await coordinator.prepareFreshLogin() }
+                            }
+                        )
+                        .id(coordinator.resolvedIntroURL.absoluteString)
+                        .transition(.opacity)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.3)
+                    }
 
                 case .home:
                     HomeView(viewModel: coordinator.makeHomeViewModel())

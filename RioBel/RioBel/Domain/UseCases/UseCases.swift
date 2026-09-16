@@ -74,4 +74,11 @@ struct ManageSessionUseCase {
     func logout() {
         repository.clearSession()
     }
+
+    /// Limpa UserDefaults + cookies/cache da WebView.
+    func logoutCompletely() async {
+        repository.clearSession()
+        await repository.clearWebsiteData()
+        AppLogger.logSuccess(.auth, operation: "ManageSessionUseCase.logoutCompletely", details: "Dados do usuário removidos do app")
+    }
 }

@@ -4,15 +4,26 @@ struct ContentView: View {
     @StateObject private var coordinator = AppCoordinator()
 
     var body: some View {
-        LoginWebView(
-            initialURL: coordinator.resolvedIntroURL,
-            candidateURLs: coordinator.loginCandidateURLs,
-            sessionUseCase: coordinator.manageSessionUseCase,
-            onLoginSuccess: { cpf, idU, idL in
-                coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
-            },
-            onDismiss: {}
-        )
+        if coordinator.isLoginReady {
+            LoginWebView(
+                initialURL: coordinator.resolvedIntroURL,
+                candidateURLs: coordinator.loginCandidateURLs,
+                sessionUseCase: coordinator.manageSessionUseCase,
+                onLoginSuccess: { cpf, idU, idL in
+                    coordinator.onLoginSuccess(cpf: cpf, idU: idU, idL: idL)
+                },
+                onDismiss: {},
+                onRetryFreshStart: {
+                    Task { await coordinator.prepareFreshLogin() }
+                }
+            )
+        } else {
+            ZStack {
+                RioBelColors.primaryBlue.ignoresSafeArea()
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            }
+        }
     }
 }
 

@@ -10,7 +10,7 @@ final class HomeViewModel: ObservableObject {
     @Published var expiredBalance: Double = 0.0
     @Published var isLoading = false
     @Published var errorMessage: String?
-    @Published var selectedWebItem: (url: URL, title: String)?
+    @Published var selectedWebItem: (url: URL, title: String, isLogout: Bool)?
 
     private let fetchDadosComprasUseCase: FetchDadosComprasUseCase
     private let fetchAppConfigUseCase: FetchAppConfigUseCase
@@ -19,6 +19,7 @@ final class HomeViewModel: ObservableObject {
 
     private(set) var menuLinks: [String: String] = [:]
     var onLogout: (() -> Void)?
+    private var isCompletingLogout = false
 
     init(
         fetchDadosComprasUseCase: FetchDadosComprasUseCase,
@@ -56,12 +57,10 @@ final class HomeViewModel: ObservableObject {
     func loadData() {
         let session = sessionUseCase.currentSession()
 
-        // 1. Carrega links de configuração do APP.do
         Task {
             await loadMenuLinks()
         }
 
-        // 2. Se temos idU mas não nome, tenta consultar ConsultaCli
         if let idU = session.idU, session.userName == nil {
             Task {
                 if let name = try? await consultCliUseCase.execute(userID: idU) {
@@ -71,7 +70,6 @@ final class HomeViewModel: ObservableObject {
             }
         }
 
-        // 3. Carrega saldo e dados de compras via dadoscompras.php
         guard let cpf = session.cpf, !cpf.isEmpty else {
             errorMessage = "CPF não encontrado na sessão."
             return
@@ -133,22 +131,19 @@ final class HomeViewModel: ObservableObject {
         AppLogger.info(.app, "Navegação: item selecionado: '\(item.rawValue)'")
 
         if item == .logout {
-            sessionUseCase.logout()
-            onLogout?()
+            openLogout()
             return
         }
 
         let session = sessionUseCase.currentSession()
 
-        // Tenta obter URL do APP.do
         if let linkKey = item.novoMenuLinkKey, let rawURL = menuLinks[linkKey] {
             if let builtURL = BunkerURLBuilder.build(from: rawURL, idU: session.idU) {
-                selectedWebItem = (url: builtURL, title: item.rawValue)
+                selectedWebItem = (url: builtURL, title: item.rawValue, isLogout: false)
                 return
             }
         }
 
-        // Fallback para itens não retornados ou se o APP.do ainda não respondeu
         let fallbackBase: String
         switch item {
         case .offers:
@@ -169,10 +164,60 @@ final class HomeViewModel: ObservableObject {
 
         let builtURL = BunkerURLBuilder.build(from: fallbackBase, idU: session.idU)
         if let url = builtURL {
-            selectedWebItem = (url: url, title: item.rawValue)
+            selectedWebItem = (url: url, title: item.rawValue, isLogout: false)
         } else {
             errorMessage = "Link temporariamente indisponível para \(item.rawValue)."
         }
+    }
+
+    /// Abre o link `logout` do APP.do (intro.do + token) antes de limpar a sessão local.
+    private func openLogout() {
+        let session = sessionUseCase.currentSession()
+
+        if let rawURL = menuLinks["logout"],
+           let builtURL = BunkerURLBuilder.build(from: rawURL, idU: session.idU) {
+            AppLogger.info(.auth, "🚪 Logout via link do APP.do: \(builtURL.absoluteString)")
+            selectedWebItem = (url: builtURL, title: "Sair", isLogout: true)
+            return
+        }
+
+        // Se os links ainda não carregaram, tenta buscar APP.do e abrir em seguida
+        Task {
+            await loadMenuLinks()
+            let refreshed = sessionUseCase.currentSession()
+            if let rawURL = self.menuLinks["logout"],
+               let builtURL = BunkerURLBuilder.build(from: rawURL, idU: refreshed.idU) {
+                AppLogger.info(.auth, "🚪 Logout via link do APP.do (após refresh): \(builtURL.absoluteString)")
+                self.selectedWebItem = (url: builtURL, title: "Sair", isLogout: true)
+            } else if let fallback = AppRuntimeConfig.shared.dynamicIntroURL
+                        ?? URL(string: AppConstants.introURLString) {
+                AppLogger.warning(.auth, "⚠️ Link logout indisponível; usando intro como fallback: \(fallback.absoluteString)")
+                self.selectedWebItem = (url: fallback, title: "Sair", isLogout: true)
+            } else {
+                await self.completeLogout()
+            }
+        }
+    }
+
+    /// Chamado ao concluir (ou falhar) a WebView de logout.
+    func completeLogout() async {
+        guard !isCompletingLogout else { return }
+        isCompletingLogout = true
+        selectedWebItem = nil
+        await sessionUseCase.logoutCompletely()
+        resetLocalState()
+        onLogout?()
+        isCompletingLogout = false
+    }
+
+    private func resetLocalState() {
+        userName = "Cliente"
+        firstName = "Cliente"
+        availableBalance = 0
+        redeemedBalance = 0
+        expiredBalance = 0
+        errorMessage = nil
+        menuLinks = [:]
     }
 
     func openGenerateToken() {
@@ -184,7 +229,7 @@ final class HomeViewModel: ObservableObject {
         )
 
         if let url = tokenURL {
-            selectedWebItem = (url: url, title: "Gerar Token")
+            selectedWebItem = (url: url, title: "Gerar Token", isLogout: false)
         }
     }
 }

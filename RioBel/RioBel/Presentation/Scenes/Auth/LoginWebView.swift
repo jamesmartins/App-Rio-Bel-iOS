@@ -20,6 +20,7 @@ struct LoginWebView: View {
     let sessionUseCase: ManageSessionUseCase
     let onLoginSuccess: (_ cpf: String?, _ idU: String, _ idL: String?) -> Void
     let onDismiss: () -> Void
+    var onRetryFreshStart: (() -> Void)?
 
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -30,7 +31,8 @@ struct LoginWebView: View {
         candidateURLs: [URL] = [],
         sessionUseCase: ManageSessionUseCase,
         onLoginSuccess: @escaping (_ cpf: String?, _ idU: String, _ idL: String?) -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        onRetryFreshStart: (() -> Void)? = nil
     ) {
         self.initialURL = initialURL
         var all = [initialURL]
@@ -41,6 +43,7 @@ struct LoginWebView: View {
         self.sessionUseCase = sessionUseCase
         self.onLoginSuccess = onLoginSuccess
         self.onDismiss = onDismiss
+        self.onRetryFreshStart = onRetryFreshStart
         _holder = StateObject(wrappedValue: LoginCoordinatorHolder(sessionUseCase: sessionUseCase, candidateURLs: all))
     }
 
@@ -48,7 +51,6 @@ struct LoginWebView: View {
         ZStack {
             RioBelColors.primaryBlue.ignoresSafeArea()
 
-            // WebView em tela cheia — a barra de navegação vem do próprio Bunker
             WKWebViewRepresentable(url: initialURL, coordinator: holder.coordinator)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(edges: .bottom)
@@ -77,7 +79,11 @@ struct LoginWebView: View {
                         .padding(.horizontal, 16)
 
                     Button(action: {
-                        if let wv = holder.coordinator.activeWebView {
+                        errorMessage = nil
+                        isLoading = true
+                        if let onRetryFreshStart {
+                            onRetryFreshStart()
+                        } else if let wv = holder.coordinator.activeWebView {
                             holder.coordinator.retry(in: wv)
                         }
                     }) {

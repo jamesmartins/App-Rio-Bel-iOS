@@ -19,4 +19,5 @@ protocol SessionRepositoryProtocol {
     func save(idL: String)
     func save(userName: String)
     func clearSession()
+    func clearWebsiteData() async
 }

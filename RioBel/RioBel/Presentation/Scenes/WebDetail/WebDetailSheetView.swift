@@ -4,11 +4,14 @@ import WebKit
 final class WebDetailCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var onDismiss: (() -> Void)?
     var onLoadingChange: ((Bool) -> Void)?
+    /// Quando `true`, permite carregar `intro.do` (logout) e fecha ao terminar.
+    var isLogoutFlow = false
+    private var hasDismissed = false
 
     // MARK: - Script Message Handler (Intercepta Voltar da Web)
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "menuBack" {
-            onDismiss?()
+            dismissOnce()
         }
     }
 
@@ -19,8 +22,15 @@ final class WebDetailCoordinator: NSObject, WKNavigationDelegate, WKScriptMessag
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         onLoadingChange?(false)
-        if let url = webView.url?.absoluteString.lowercased(), shouldDismiss(for: url) {
-            onDismiss?()
+
+        if isLogoutFlow {
+            AppLogger.logSuccess(.auth, operation: "WebDetail.logout", details: "Logout web concluído: \(webView.url?.absoluteString ?? "")")
+            dismissOnce()
+            return
+        }
+
+        if let url = webView.url?.absoluteString.lowercased(), shouldDismissMenu(for: url) {
+            dismissOnce()
             return
         }
         webView.evaluateJavaScript(Self.backButtonJavaScript, completionHandler: nil)
@@ -28,10 +38,18 @@ final class WebDetailCoordinator: NSObject, WKNavigationDelegate, WKScriptMessag
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         onLoadingChange?(false)
+        if isLogoutFlow {
+            AppLogger.logFailure(.auth, operation: "WebDetail.logout.didFail", error: error)
+            dismissOnce()
+        }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         onLoadingChange?(false)
+        if isLogoutFlow {
+            AppLogger.logFailure(.auth, operation: "WebDetail.logout.didFailProvisional", error: error)
+            dismissOnce()
+        }
     }
 
     func webView(
@@ -39,16 +57,28 @@ final class WebDetailCoordinator: NSObject, WKNavigationDelegate, WKScriptMessag
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        if let url = navigationAction.request.url?.absoluteString.lowercased(), shouldDismiss(for: url) {
+        // No logout, a URL alvo é o próprio intro.do — precisa carregar.
+        if isLogoutFlow {
+            decisionHandler(.allow)
+            return
+        }
+
+        if let url = navigationAction.request.url?.absoluteString.lowercased(), shouldDismissMenu(for: url) {
             decisionHandler(.cancel)
-            onDismiss?()
+            dismissOnce()
             return
         }
         decisionHandler(.allow)
     }
 
-    private func shouldDismiss(for url: String) -> Bool {
+    private func shouldDismissMenu(for url: String) -> Bool {
         url.contains("novomenu") || url.contains("intro.do")
+    }
+
+    private func dismissOnce() {
+        guard !hasDismissed else { return }
+        hasDismissed = true
+        onDismiss?()
     }
 
     static let backButtonJavaScript = """
@@ -88,6 +118,7 @@ final class WebDetailCoordinator: NSObject, WKNavigationDelegate, WKScriptMessag
 struct WebDetailSheetView: View {
     let url: URL
     let title: String
+    var isLogoutFlow: Bool = false
     let onDismiss: () -> Void
 
     @State private var isLoading = true
@@ -109,6 +140,7 @@ struct WebDetailSheetView: View {
             }
         }
         .onAppear {
+            coordinator.isLogoutFlow = isLogoutFlow
             coordinator.onDismiss = onDismiss
             coordinator.onLoadingChange = { loading in
                 self.isLoading = loading
@@ -140,7 +172,7 @@ struct WebDetailRepresentable: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.backgroundColor = UIColor(RioBelColors.primaryBlue)
         webView.isOpaque = false
-        webView.load(URLRequest(url: url))
+        webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20))
         return webView
     }
 

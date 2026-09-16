@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 
 final class DadosComprasRepository: DadosComprasRepositoryProtocol {
     private let client: HTTPClientProtocol
@@ -189,6 +190,16 @@ final class SessionRepository: SessionRepositoryProtocol {
         defaults.removeObject(forKey: "userName")
         defaults.removeObject(forKey: "login")
         defaults.removeObject(forKey: "senha")
-        AppLogger.info(.auth, "Sessão limpa (Logout concluído)")
+        AppLogger.info(.auth, "Sessão limpa (Logout: UserDefaults)")
+    }
+
+    /// Remove cookies, cache e storage do WKWebView (logout completo no lado web).
+    func clearWebsiteData() async {
+        let dataStore = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        let records = await dataStore.dataRecords(ofTypes: types)
+        await dataStore.removeData(ofTypes: types, for: records)
+        HTTPCookieStorage.shared.cookies?.forEach { HTTPCookieStorage.shared.deleteCookie($0) }
+        AppLogger.info(.auth, "Sessão limpa (Logout: cookies/cache WebView)")
     }
 }

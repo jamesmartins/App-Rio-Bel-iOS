@@ -9,6 +9,8 @@ enum AppRoute: Equatable {
 @MainActor
 final class AppCoordinator: ObservableObject {
     @Published var currentRoute: AppRoute = .login
+    /// Evita abrir a WebView de login antes de limpar cache e carregar APP.do.
+    @Published var isLoginReady = false
 
     // Dependências Clean Architecture
     let sessionRepository: SessionRepositoryProtocol
@@ -22,7 +24,9 @@ final class AppCoordinator: ObservableObject {
     let consultCliUseCase: ConsultCliUseCase
 
     var resolvedIntroURL: URL {
-        AppRuntimeConfig.shared.dynamicIntroURL ?? AppConstants.loginCandidateURLs().first ?? URL(string: AppConstants.introURLString)!
+        AppRuntimeConfig.shared.dynamicIntroURL
+            ?? AppConstants.loginCandidateURLs().first
+            ?? URL(string: AppConstants.introURLString)!
     }
 
     var loginCandidateURLs: [URL] {
@@ -46,7 +50,7 @@ final class AppCoordinator: ObservableObject {
         self.consultCliUseCase = ConsultCliUseCase(repository: consultaCliRepository)
 
         checkInitialRoute()
-        prefetchAppConfig()
+        Task { await bootstrap() }
     }
 
     convenience init() {
@@ -63,16 +67,31 @@ final class AppCoordinator: ObservableObject {
         currentRoute = session.isAuthenticated ? .home : .login
     }
 
-    private func prefetchAppConfig() {
-        Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                _ = try await self.fetchAppConfigUseCase.execute()
-                AppLogger.info(.auth, "Configurações do Bunker pré-carregadas com sucesso na inicialização.")
-            } catch {
-                AppLogger.logFailure(.auth, operation: "AppCoordinator.prefetchAppConfig", error: error)
-            }
+    /// Limpa sessão/cache quando não autenticado e pré-carrega APP.do.
+    private func bootstrap() async {
+        if !manageSessionUseCase.currentSession().isAuthenticated {
+            AppLogger.info(.auth, "🧹 Bootstrap: forçando limpeza de sessão/cache para recuperar a intro")
+            await manageSessionUseCase.logoutCompletely()
+            currentRoute = .login
         }
+
+        do {
+            _ = try await fetchAppConfigUseCase.execute()
+            AppLogger.info(.auth, "Configurações do Bunker pré-carregadas com sucesso.")
+        } catch {
+            AppLogger.logFailure(.auth, operation: "AppCoordinator.bootstrap", error: error)
+        }
+
+        isLoginReady = true
+    }
+
+    /// Usado após logout ou "Tentar Novamente" na intro.
+    func prepareFreshLogin() async {
+        isLoginReady = false
+        await manageSessionUseCase.logoutCompletely()
+        _ = try? await fetchAppConfigUseCase.execute()
+        currentRoute = .login
+        isLoginReady = true
     }
 
     // MARK: - Transições de Fluxo
@@ -94,13 +113,6 @@ final class AppCoordinator: ObservableObject {
         }
     }
 
-    func logout() {
-        manageSessionUseCase.logout()
-        withAnimation {
-            currentRoute = .login
-        }
-    }
-
     // MARK: - View Factory
 
     func makeHomeViewModel() -> HomeViewModel {
@@ -111,7 +123,9 @@ final class AppCoordinator: ObservableObject {
             sessionUseCase: manageSessionUseCase
         )
         vm.onLogout = { [weak self] in
-            self?.logout()
+            Task { @MainActor in
+                await self?.prepareFreshLogin()
+            }
         }
         return vm
     }
