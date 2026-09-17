@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+<<<<<<< HEAD
     @StateObject private var coordinator = AppCoordinator()
 
     var body: some View {
@@ -24,6 +25,11 @@ struct ContentView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
             }
         }
+=======
+    var body: some View {
+        Text("RioBel")
+            .padding()
+>>>>>>> origin/main
     }
 }
 
