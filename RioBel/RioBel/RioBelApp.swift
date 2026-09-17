@@ -2,7 +2,6 @@ import SwiftUI
 
 @main
 struct RioBelApp: App {
-<<<<<<< HEAD
     @StateObject private var coordinator = AppCoordinator()
 
     var body: some Scene {
@@ -45,11 +44,6 @@ struct RioBelApp: App {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: coordinator.currentRoute)
-=======
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
->>>>>>> origin/main
         }
     }
 }
