@@ -99,13 +99,6 @@ struct HomeView: View {
             Text(viewModel.formattedCurrency(viewModel.availableBalance))
                 .font(.system(size: 34, weight: .bold))
                 .foregroundColor(.white)
-
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color.white.opacity(0.9))
-                    .padding(.top, 2)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

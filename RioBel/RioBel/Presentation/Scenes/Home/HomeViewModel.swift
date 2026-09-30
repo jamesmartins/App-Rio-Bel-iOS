@@ -9,7 +9,6 @@ final class HomeViewModel: ObservableObject {
     @Published var redeemedBalance: Double = 0.0
     @Published var expiredBalance: Double = 0.0
     @Published var isLoading = false
-    @Published var errorMessage: String?
     @Published var selectedWebItem: (url: URL, title: String, isLogout: Bool)?
 
     private let fetchDadosComprasUseCase: FetchDadosComprasUseCase
@@ -71,12 +70,11 @@ final class HomeViewModel: ObservableObject {
         }
 
         guard let cpf = session.cpf, !cpf.isEmpty else {
-            errorMessage = "CPF não encontrado na sessão."
+            AppLogger.warning(.app, "HomeViewModel.loadData: CPF não encontrado na sessão.")
             return
         }
 
         isLoading = true
-        errorMessage = nil
 
         Task {
             do {
@@ -106,7 +104,6 @@ final class HomeViewModel: ObservableObject {
                 }
             } catch {
                 self.isLoading = false
-                self.errorMessage = error.localizedDescription
                 AppLogger.logFailure(.app, operation: "HomeViewModel.loadData", error: error)
             }
         }
@@ -172,7 +169,7 @@ final class HomeViewModel: ObservableObject {
         if let url = builtURL {
             selectedWebItem = (url: url, title: item.rawValue, isLogout: false)
         } else {
-            errorMessage = "Link temporariamente indisponível para \(item.rawValue)."
+            AppLogger.warning(.app, "Link temporariamente indisponível para \(item.rawValue).")
         }
     }
 
@@ -222,7 +219,6 @@ final class HomeViewModel: ObservableObject {
         availableBalance = 0
         redeemedBalance = 0
         expiredBalance = 0
-        errorMessage = nil
         menuLinks = [:]
     }
 
